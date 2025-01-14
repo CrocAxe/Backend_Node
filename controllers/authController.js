@@ -36,9 +36,13 @@ const loginUser = async (req, res) => {
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
+    
+    // Retrieve the Firebase ID Token after successful login
+    const idToken = await user.getIdToken();
 
     console.log("Login successful for user ID:", user.uid);
-    res.status(200).json({ message: "Login successful", userId: user.uid });
+
+    res.status(200).json({ message: "Login successful", userId: user.uid, idToken });
   } catch (error) {
     console.error("Error logging in user:", error.message);
     res.status(401).json({ error: error.message });
