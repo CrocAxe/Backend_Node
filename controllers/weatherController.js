@@ -1,97 +1,109 @@
 const axios = require("axios");
+const foursquareToken = process.env.FOURSQUARE_API_KEY;
 
-
-const activities = {
-  categories: {
-    outdoor: {
-      active: [
-        { name: "Hiking", minTemp: 10, maxTemp: 30, conditions: ["Clear", "Clouds"] },
-        { name: "Cycling", minTemp: 10, maxTemp: 28, conditions: ["Clear", "Clouds"] },
-        { name: "Beach activities", minTemp: 20, maxTemp: 35, conditions: ["Clear"] },
-        { name: "Outdoor photography", minTemp: 5, maxTemp: 30, conditions: ["Clear", "Clouds"] }
-      ],
-      relaxed: [
-        { name: "Picnic in the park", minTemp: 15, maxTemp: 28, conditions: ["Clear", "Clouds"] },
-        { name: "Sightseeing", minTemp: 10, maxTemp: 30, conditions: ["Clear", "Clouds"] },
-        { name: "Garden visits", minTemp: 12, maxTemp: 28, conditions: ["Clear", "Clouds"] }
-      ]
-    },
-    indoor: {
-      cultural: [
-        { name: "Museum visit", conditions: ["Rain", "Thunderstorm", "Snow", "Clear", "Clouds"] },
-        { name: "Art gallery tour", conditions: ["Rain", "Thunderstorm", "Snow", "Clear", "Clouds"] },
-        { name: "Local history exhibition", conditions: ["Rain", "Thunderstorm", "Snow", "Clear", "Clouds"] }
-      ],
-      entertainment: [
-        { name: "Cinema", conditions: ["Rain", "Thunderstorm", "Snow", "Clear", "Clouds"] },
-        { name: "Theater show", conditions: ["Rain", "Thunderstorm", "Snow", "Clear", "Clouds"] },
-        { name: "Indoor concerts", conditions: ["Rain", "Thunderstorm", "Snow", "Clear", "Clouds"] }
-      ]
-    },
-    seasonal: {
-      winter: [
-        { name: "Skiing", minTemp: -10, maxTemp: 5, conditions: ["Snow", "Clear", "Clouds"] },
-        { name: "Ice skating", minTemp: -5, maxTemp: 10, conditions: ["Snow", "Clear", "Clouds"] },
-        { name: "Winter hiking", minTemp: -5, maxTemp: 10, conditions: ["Snow", "Clear", "Clouds"] }
-      ],
-      summer: [
-        { name: "Water parks", minTemp: 25, maxTemp: 35, conditions: ["Clear"] },
-        { name: "Beach volleyball", minTemp: 20, maxTemp: 35, conditions: ["Clear"] },
-        { name: "Outdoor swimming", minTemp: 23, maxTemp: 35, conditions: ["Clear"] }
-      ]
+// Function to get coordinates from city name using Mapbox
+const getCoordinates = async (city) => {
+  const mapboxToken = process.env.MAPBOX_TOKEN;
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(city)}.json?access_token=${mapboxToken}`;
+  
+  console.log('Making Mapbox request to:', url);
+  
+  try {
+    const response = await axios.get(url);
+    console.log('Mapbox request successful');
+    
+    if (response.data.features.length === 0) {
+      throw new Error('Location not found');
     }
+    
+    return {
+      longitude: response.data.features[0].center[0],
+      latitude: response.data.features[0].center[1]
+    };
+  } catch (error) {
+    console.log('Mapbox error:', error.response?.status, error.response?.data);
+    throw error;
   }
 };
 
+// Helper function to map weather conditions to activity categories
+const getActivitiesByWeather = (weatherCondition) => {
+  const weatherActivities = {
+    'Clear': ['16000', '18000', '16032'], // Parks, Sports, Hiking trails
+    'Rain': ['12000', '10000', '13000'],  // Shopping, Arts, Entertainment
+    'Clouds': ['12000', '13000', '17000'], // Shopping, Entertainment, Fitness
+    'Snow': ['16032', '12000', '10000']    // Indoor activities
+  };
 
-// Function to get weather data by city name
-const getWeatherByCity = async (req, res) => {
+  // Default to indoor activities if weather condition not found
+  const condition = Object.keys(weatherActivities).find(key => 
+    weatherCondition.toLowerCase().includes(key.toLowerCase())
+  ) || 'Rain';
+
+  return weatherActivities[condition];
+};
+
+// Function to get places from Foursquare
+const getPlaces = async (latitude, longitude, weatherCondition) => {
+  try {
+    const categories = getActivitiesByWeather(weatherCondition);
+    
+
+    console.log('Preparing Foursquare request...');
+    
+    const requestConfig = {
+      method: 'GET',
+      url: 'https://api.foursquare.com/v3/places/search',
+      params: {
+        ll: `${latitude},${longitude}`,
+        categories: categories.join(','),
+        limit: 10
+      },
+      headers: {
+        'Authorization': foursquareToken,
+        'Accept': 'application/json'
+      }
+    };
+
+    console.log('Making Foursquare request with config:', {
+      ...requestConfig,
+      headers: { 'Authorization': 'Bearer [HIDDEN]' }
+    });
+
+    const response = await axios(requestConfig);
+    console.log('Foursquare request successful');
+    return response.data.results;
+  } catch (error) {
+    console.error('Foursquare API Error:', error.response?.data || error.message);
+    return [];
+  }
+};
+
+// Main function to get weather, map, and activity data
+const getLocationDetails = async (req, res) => {
   const { city } = req.query;
-
+  
   if (!city) {
     return res.status(400).json({ error: "City name is required" });
   }
 
   try {
-    const apiKey = process.env.OPENWEATHER_API_KEY;
-    const weatherURL = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
-
-    const response = await axios.get(weatherURL);
-    const weatherData = response.data;
-
-    // Send relevant weather data
-    res.status(200).json({
-      location: weatherData.name,
-      temperature: weatherData.main.temp,
-      description: weatherData.weather[0].description,
-      humidity: weatherData.main.humidity,
-      windSpeed: weatherData.wind.speed,
-    });
-  } catch (error) {
-    console.error("Error fetching weather data:", error.message);
-    res.status(500).json({ error: "Error fetching weather data" });
-  }
-};
-
-
-// Function to get 7-day weather forecast by city name
-const getWeatherForecast = async (req, res) => {
-  const city = req.query.city;
- if (!city) {
-    return res.status(400).json({ error: "City is required" });
-  }
-
-  try {
-    const apiKey = process.env.OPENWEATHER_API_KEY;
-    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}&units=metric`;
+    // Get coordinates
+    const coords = await getCoordinates(city);
     
-    const response = await axios.get(forecastUrl);
-    const data = response.data;
+    // Get weather forecast
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${coords.latitude}&lon=${coords.longitude}&appid=${apiKey}&units=metric`;
+    
+    console.log('Making OpenWeather request...');
+    const weatherResponse = await axios.get(forecastUrl);
+    console.log('OpenWeather request successful');
+    const weatherData = weatherResponse.data;
 
-    // Group by date to provide daily forecast summaries
+    // Process forecast data
     const dailyForecast = {};
-    data.list.forEach(forecast => {
-      const date = forecast.dt_txt.split(" ")[0]; // Extract date only
+    weatherData.list.forEach(forecast => {
+      const date = forecast.dt_txt.split(" ")[0];
       if (!dailyForecast[date]) {
         dailyForecast[date] = [];
       }
@@ -105,133 +117,117 @@ const getWeatherForecast = async (req, res) => {
       description: dailyForecast[date][0].weather[0].description,
     }));
 
-    res.status(200).json({ city: data.city.name, forecast: forecastSummary });
-  } catch (error) {
-    console.error("Error fetching weather forecast:", error.message);
-    res.status(500).json({ error: "Failed to fetch weather data" });
-  }
-};
-
-
-
-// Helper function to get recommended activities based on weather
-const getRecommendedActivities = (temperature, weatherCondition) => {
-  const recommendations = {
-    outdoor: { active: [], relaxed: [] },
-    indoor: { cultural: [], entertainment: [] },
-    seasonal: { winter: [], summer: [] }
-  };
-
-  // Map OpenWeatherMap conditions to our activity conditions
-  const conditionMapping = {
-    "Clear": "Clear",
-    "Clouds": "Clouds",
-    "Rain": "Rain",
-    "Snow": "Snow",
-    "Thunderstorm": "Thunderstorm"
-  };
-
-  const mappedCondition = conditionMapping[weatherCondition] || "Clear";
-
-  // Helper function to check if an activity is suitable
-  const isActivitySuitable = (activity) => {
-    if (activity.conditions.includes(mappedCondition)) {
-      if (activity.minTemp !== undefined && activity.maxTemp !== undefined) {
-        return temperature >= activity.minTemp && temperature <= activity.maxTemp;
-      }
-      return true;
-    }
-    return false;
-  };
-
-  // Check each category and subcategory
-  Object.keys(activities.categories).forEach(categoryKey => {
-    const category = activities.categories[categoryKey];
-    Object.keys(category).forEach(subcategoryKey => {
-      const subcategory = category[subcategoryKey];
-      recommendations[categoryKey][subcategoryKey] = subcategory.filter(isActivitySuitable);
-    });
-  });
-
-  return recommendations;
-};
-
-// Function to get weather data and activity recommendations by city name
-const getWeatherAndActivities = async (req, res) => {
-  const { city } = req.query;
-
-  if (!city) {
-    return res.status(400).json({ error: "City name is required" });
-  }
-
-  try {
-    const apiKey = process.env.OPENWEATHER_API_KEY;
-    const weatherURL = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
-    const response = await axios.get(weatherURL);
-    const weatherData = response.data;
-
-    // Get weather condition and temperature
-    const temperature = weatherData.main.temp;
-    const weatherCondition = weatherData.weather[0].main;
-
-    // Get activity recommendations
-    const recommendations = getRecommendedActivities(temperature, weatherCondition);
+    // Get recommended places based on current weather
+    const currentWeather = weatherData.list[0].weather[0].main;
+    const places = await getPlaces(coords.latitude, coords.longitude, currentWeather);
 
     // Prepare response
     res.status(200).json({
-      location: weatherData.name,
-      coordinates: {
-        lat: weatherData.coord.lat,
-        lon: weatherData.coord.lon
+      location: {
+        city: weatherData.city.name,
+        coordinates: coords
       },
-      weather: {
-        temperature: temperature,
-        description: weatherData.weather[0].description,
-        humidity: weatherData.main.humidity,
-        windSpeed: weatherData.wind.speed,
-        condition: weatherCondition
+      forecast: forecastSummary,
+      mapbox: {
+        center: [coords.longitude, coords.latitude]
       },
-      recommendedActivities: recommendations
+      recommendedPlaces: places.map(place => ({
+        name: place.name,
+        category: place.categories[0]?.name || 'Venue',
+        address: place.location.formatted_address,
+        coordinates: {
+          latitude: place.geocodes.main.latitude,
+          longitude: place.geocodes.main.longitude
+        }
+      }))
     });
+
   } catch (error) {
-    console.error("Error fetching weather data:", error.message);
-    res.status(500).json({ error: "Error fetching weather data" });
+    console.error("Error fetching location details:", error.message);
+    if (error.response) {
+      console.error("API Response:", error.response.data);
+      console.error("Status code:", error.response.status);
+    }
+    res.status(500).json({ 
+      error: "Failed to fetch location details",
+      details: error.message
+    });
   }
 };
 
-// Function to manage favorites list
-const favorites = new Map(); 
+// Function to get data based on current location
+const getCurrentLocationDetails = async (req, res) => {
+  const { latitude, longitude } = req.query;
 
-const manageFavorites = async (req, res) => {
-  const { userId, city, action } = req.body;
-
-  if (!userId || !city || !action) {
-    return res.status(400).json({ error: "Missing required parameters" });
+  if (!latitude || !longitude) {
+    return res.status(400).json({ error: "Latitude and longitude are required" });
   }
 
   try {
-    if (!favorites.has(userId)) {
-      favorites.set(userId, new Set());
-    }
+    // Get weather forecast for current location
+    const apiKey = process.env.OPENWEATHER_API_KEY;
+    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric`;
+    
+    console.log('Making OpenWeather request for current location...');
+    const weatherResponse = await axios.get(forecastUrl);
+    console.log('OpenWeather request successful');
+    const weatherData = weatherResponse.data;
 
-    const userFavorites = favorites.get(userId);
+    // Process forecast same as above
+    const dailyForecast = {};
+    weatherData.list.forEach(forecast => {
+      const date = forecast.dt_txt.split(" ")[0];
+      if (!dailyForecast[date]) {
+        dailyForecast[date] = [];
+      }
+      dailyForecast[date].push(forecast);
+    });
 
-    if (action === 'add') {
-      userFavorites.add(city);
-    } else if (action === 'remove') {
-      userFavorites.delete(city);
-    }
+    const forecastSummary = Object.keys(dailyForecast).map(date => ({
+      date,
+      temp_min: Math.min(...dailyForecast[date].map(f => f.main.temp_min)),
+      temp_max: Math.max(...dailyForecast[date].map(f => f.main.temp_max)),
+      description: dailyForecast[date][0].weather[0].description,
+    }));
+
+    // Get recommended places
+    const currentWeather = weatherData.list[0].weather[0].main;
+    const places = await getPlaces(latitude, longitude, currentWeather);
 
     res.status(200).json({
-      userId,
-      favorites: Array.from(userFavorites)
+      location: {
+        city: weatherData.city.name,
+        coordinates: { latitude, longitude }
+      },
+      forecast: forecastSummary,
+      mapbox: {
+        center: [longitude, latitude]
+      },
+      recommendedPlaces: places.map(place => ({
+        name: place.name,
+        category: place.categories[0]?.name || 'Venue',
+        address: place.location.formatted_address,
+        coordinates: {
+          latitude: place.geocodes.main.latitude,
+          longitude: place.geocodes.main.longitude
+        }
+      }))
     });
+
   } catch (error) {
-    console.error("Error managing favorites:", error.message);
-    res.status(500).json({ error: "Error managing favorites" });
+    console.error("Error fetching current location details:", error.message);
+    if (error.response) {
+      console.error("API Response:", error.response.data);
+      console.error("Status code:", error.response.status);
+    }
+    res.status(500).json({ 
+      error: "Failed to fetch location details",
+      details: error.message
+    });
   }
 };
-  
 
-module.exports = { getWeatherByCity, getWeatherForecast, getWeatherAndActivities, manageFavorites };
-
+module.exports = {
+  getLocationDetails,
+  getCurrentLocationDetails
+};

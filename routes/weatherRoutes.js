@@ -1,18 +1,11 @@
 const express = require("express");
-const { getWeatherByCity, getWeatherForecast, getWeatherAndActivities, manageFavorites } = require("../controllers/weatherController");
+const {getLocationDetails, getCurrentLocationDetails} = require("../controllers/weatherController");
+const router = require("./authRoutes");
 
-const router = express.Router();
+// City search endpoint
+router.get("/location", getLocationDetails);
 
-// Route for getting weather by city
-router.get("/weather", getWeatherByCity);
-
-// Route for getting 7-day weather forecast by city
-router.get("/7-day-forecast", getWeatherForecast);
-
-// Route for getting weather with activity recommendations
-router.get("/weather-activities", getWeatherAndActivities);
-
-// Route for managing favorites
-router.post("/favorites", manageFavorites);
+// Current location endpoint
+router.get("/current-location", getCurrentLocationDetails);
 
 module.exports = router;

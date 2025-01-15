@@ -11,7 +11,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Routes for Users
+// Routes for Users 
 app.use("/users", userRoutes);
 app.use("/profile", verifyAuth, profileRoutes);
 
@@ -22,6 +22,10 @@ app.use("/api", weatherRoutes);
 app.get("/", (req, res) => {
   res.send("Welcome to the Weather Planner App Backend!");
 });
+
+console.log('Mapbox Token exists:', !!process.env.MAPBOX_TOKEN);
+console.log('OpenWeather Key exists:', !!process.env.OPENWEATHER_API_KEY);
+console.log('Foursquare Key exists:', !!process.env.FOURSQUARE_API_KEY);
 
 // Server Listening
 const PORT = process.env.PORT || 5000;
