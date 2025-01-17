@@ -115,7 +115,19 @@ const getLocationDetails = async (req, res) => {
       temp_min: Math.min(...dailyForecast[date].map(f => f.main.temp_min)),
       temp_max: Math.max(...dailyForecast[date].map(f => f.main.temp_max)),
       description: dailyForecast[date][0].weather[0].description,
-    }));
+    
+
+    // Add average humidity for the day
+    humidity: Math.round(
+      dailyForecast[date].reduce((sum, f) => sum + f.main.humidity, 0) / 
+      dailyForecast[date].length
+    ),
+    // Add average wind speed for the day
+    wind_speed: Math.round(
+      (dailyForecast[date].reduce((sum, f) => sum + f.wind.speed, 0) / 
+      dailyForecast[date].length) * 10
+    ) / 10
+  }));
 
     // Get recommended places based on current weather
     const currentWeather = weatherData.list[0].weather[0].main;
